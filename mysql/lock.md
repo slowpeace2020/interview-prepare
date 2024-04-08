@@ -1,0 +1,1 @@
+[两万字详解InnoDB的锁](https://juejin.cn/post/7094049650428084232)
