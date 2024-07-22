@@ -70,9 +70,6 @@ For a software engineer interview focused on behavioral questions and team compa
         
 3. **Problem-Solving and Critical Thinking**:
     - **Question**: "Can you share an example of a challenging problem you encountered in a project? How did you approach solving it and what was the outcome?"
-      Certainly! Here’s a detailed response to the question about a challenging problem you encountered, based on the issue with the order search list page response time in the customer service platform:
-
-**Question**: "Can you share an example of a challenging problem you encountered in a project? How did you approach solving it and what was the outcome?"
 
 **Answer**: "At Haozan Inc., we faced a significant challenge with the customer service platform's order search list page, which was experiencing slow response times. This issue was critical as it impacted the efficiency of our customer service representatives and overall user satisfaction.
 
@@ -107,7 +104,51 @@ This response clearly outlines the problem, your approach to solving it, and the
 
 5. **Communication Skills**:
     - **Question**: "Give an example of how you communicated a complex technical issue to a non-technical stakeholder. How did you ensure they understood?"
-    - **Rationale**: Effective communication is essential for collaboration between technical and non-technical team members. This question evaluates the candidate's ability to convey complex information clearly and concisely.
+### Context
+In a previous role at a property management platform company, we decided to migrate our entire system from local servers to a cloud-based infrastructure to improve scalability, reliability, and performance. This migration was crucial for supporting our growing user base and enhancing our system capabilities. Our Chief Financial Officer (CFO) needed to understand the reasons for this migration, the process, and the expected outcomes.
+
+### Communication Approach
+1. **Understand the Audience**:
+   I knew that the CFO might not be familiar with technical details but would be very interested in understanding the financial implications, potential risks, and benefits. My goal was to explain the technical migration in a way that highlighted these aspects.
+
+2. **Use Analogies and Simple Language**:
+   I used an analogy comparing our local servers to a small, private warehouse and the cloud infrastructure to a large, flexible distribution center. This helped illustrate the advantages of moving to the cloud, such as better scalability and lower maintenance costs.
+
+3. **Visual Aids**:
+   I prepared a few slides with visuals to make the explanation clearer:
+    - A diagram showing our current setup with local servers and its limitations (e.g., limited scalability, higher maintenance costs).
+    - Another diagram illustrating the cloud infrastructure, highlighting its scalability, flexibility, and potential for cost savings.
+    - A step-by-step flowchart of the migration process, showing key milestones and checkpoints.
+
+4. **Focus on the Impact and Solution**:
+   I explained the current challenges with our local servers, such as:
+    - Limited scalability: Difficulty in handling increased traffic and data storage needs.
+    - High maintenance costs: Regular hardware upgrades and maintenance.
+    - Reliability concerns: Risk of downtime and data loss.
+
+   I then outlined the benefits of migrating to the cloud:
+    - Improved scalability: Easily handle growing traffic and storage needs.
+    - Cost efficiency: Pay for what we use, reduce hardware and maintenance costs.
+    - Enhanced reliability: Robust backup and disaster recovery options.
+
+   I also detailed our migration plan:
+    - Planning and assessment: Identifying which parts of our system to migrate first.
+    - Data migration: Ensuring secure and efficient transfer of data to the cloud.
+    - Testing and validation: Ensuring everything works correctly post-migration.
+    - Final migration and go-live: Switching over to the cloud infrastructure.
+
+5. **Feedback and Questions**:
+   I encouraged the CFO to ask questions and provided clear, concise answers. For example, when asked about the initial costs of migration, I explained the investment required and how it would be offset by long-term savings and benefits.
+
+### Ensuring Understanding
+To ensure the CFO fully understood the migration and its implications, I:
+- **Reiterated Key Points**: At the end of the discussion, I summarized the reasons for migration, the benefits, the process, and the expected outcomes in simple terms.
+- **Provided a Written Summary**: I followed up with an email summarizing the discussion, including key points and visuals from the presentation.
+- **Regular Updates**: I scheduled regular updates to inform the CFO about the progress of the migration and any emerging financial implications or benefits.
+
+### Outcome
+By using simple language, relatable analogies, and visual aids, I effectively communicated the complex technical migration to the CFO. This ensured that they understood the rationale behind the migration, supported our plan, and allocated the necessary resources. Consequently, we successfully migrated to the cloud, leading to improved system performance, scalability, and cost efficiency.
+
 
 6. **Team Fit and Culture**:
     - **Question**: "What type of work environment do you thrive in, and what do you value most in a team setting?"
