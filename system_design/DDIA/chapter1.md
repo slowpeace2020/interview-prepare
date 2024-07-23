@@ -65,6 +65,10 @@ network  packet  and  TCP  retransmission,  a  garbage  collection  pause,  a  p
 forcing a read from disk, mechanical vibrations in the server rack, or many other
 causes.
 
+typical response time: median response time(50th percentile) rather than average response time. Tail latencies, directly affect user's experience of the service.
+
+
+
 
 ## Maintainability
 Over time, many different people will work on the system (engineering and oper‐
