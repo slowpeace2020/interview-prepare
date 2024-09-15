@@ -74,3 +74,12 @@ typical response time: median response time(50th percentile) rather than average
 Over time, many different people will work on the system (engineering and oper‐
 ations,  both  maintaining  current  behavior  and  adapting  the  system  to  new  use
 cases), and they should all be able to work on it productively.
+
+- **Three design principles for software systems**:
+    - **Operability**
+     monitor the system health, track down the cause of the problem, keep software and platform up to date, 
+    - **Simplicity**
+     abstraction, to reduce complexity. 
+    - **Evolvability**
+     make change easy, 
+
