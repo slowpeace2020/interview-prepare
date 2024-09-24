@@ -1,4 +1,4 @@
-# Chapter2
+# Chapter2 Data model and Query language
 > compares  several different  data  models  and  query  languages—the
 most visible distinguishing factor between databases from a developer’s point of
 view. We will see how different models are appropriate to different situations.
@@ -234,4 +234,4 @@ When dealing with **highly interconnected data**, the choice of data model and q
 
 Choosing the right model depends on the nature of the relationships in your data and the specific requirements of your application.
 
-P59
+### Datalog

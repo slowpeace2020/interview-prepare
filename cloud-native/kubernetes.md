@@ -563,6 +563,61 @@ StatefulSet configuration file
 Setup Prometheus Monitoring on kubernetes using Helm and Prometheus Operator
 
 Kubernetes Operator是什么？
+怎么用它部署stateless和stateful application
+HOW to deploy the app
+how to create cluster of replicas?
+how to recover?
+
+stateful applications with operator
+only 1 standard automated process
+
+how does this work?
+control loop mechanism,watch for changes
+make use of CRD's(custom resource definitions,custom k8s components, extend k8s API)
+
+k8s manage complete lifecycle of stateless apps
+k8s can't automate the process natively for stateful apps
+
+stateful apps 有它们各自对应的kubernetes operator，可以去网上找到对应的仓库
+
+steps to monitor mongoDB metrics using Prometheus exporter
+
+what is an exporter?
+target:mongodb app
+1. fetches metrics
+2. converts to correct format
+3. expose/metrics
+4. 
+what is a serviceMonitor?
+
+what is a kubernetes service and when we need it?
+each pod has its own IP address, pods are ephemeral, destroyed frequently
+
+service has stable IP address, loadbalancing, lose coupling, within & outside cluster
+
+
+different service types explained: 
+clisterIP services: default type, IP address from Node's range,每个node有一个IP范围( kubectl get pod -o wide)
+流量请求先经由Ingress,到sevices(internal service)再转发到相应的pod，
+example: 
+microservice app deployed, 
+side car container: collects microservice logs
+
+service communication: selector
+how the service know which pods to forward the requests to? which port to forward it to?
+pods are identified via selectors, it's key value pairs, label of pods, service的targetPort参数决定转发到哪个端口
+必须匹配所有的label，register as endpoints
+
+
+
+headless services, NodePort Services, LoadBalancer Services
+
+
+
+
+
+
+
 
 using an operator manage of all Prometheus components
 - find Prometeus operator
@@ -576,9 +631,6 @@ Why StatefulSet is used?
 
 
 How StatefulSet works and how it's different from Deployment
-
-
-
 
 
 
