@@ -1,163 +1,98 @@
-# Chapter 11. Stateless Service
->“Stateless Service”, describes the building blocks used for
-managing identical application instances.
->The Stateless Service pattern describes how to create and operate
-applications that are composed of identical ephemeral replicas. These
-applications are best suited for dynamic cloud environments where they can
-be rapidly scaled and made highly available.
+# 第11章：无状态服务
 
-## Problem
-A stateless service does not maintain any state internally within the instance
-across service interactions. In our context, it means a container is stateless if
-it does not hold any information from requests in its internal storage
-(memory or temporary filesystem) that is critical for serving future requests.
-A stateless process has no stored knowledge of or reference to past requests,
-so each request is made as if from scratch.
-Instead, if the process needs to
-store such information, it should store it in an external storage such as a
-database, message queue, mounted filesystem, or some other data store that
-can be accessed by other instances. 
+## 引言
+“无状态服务”描述了用于管理相同应用实例的构建模块。无状态服务模式介绍了如何创建和操作由相同、短暂的副本组成的应用程序。这类应用非常适合动态的云环境，在这些环境中，它们可以迅速扩展并保持高可用性。
 
-Stateless services are made of identical, replaceable instances that often
-offload state to external permanent storage systems and use load-balancers
-for distributing incoming requests among themselves. In this chapter, we
-will see specifically which Kubernetes abstractions can help operate such
-stateless applications.
+### 问题定义
+无状态服务不会在实例内部存储跨服务交互的状态。在本文的上下文中，如果容器不在其内部存储（如内存或临时文件系统）中保存任何用于未来请求的关键信息，则该容器被认为是无状态的。无状态进程没有关于过去请求的知识或引用，因此每个请求都被当作全新请求处理。如果进程需要存储此类信息，它应将其存储在外部存储中，如数据库、消息队列、挂载的文件系统或其他可被其他实例访问的数据存储中。
 
-## Solution
-The controller that is used for managing
-stateless Pods is ReplicaSet, but that is a lower-level internal control
-structure used by a Deployment. Deployment is the recommended user-
-facing abstraction for creating and updating stateless applications, which
-creates and manages the ReplicaSets behind the scene. A ReplicaSet should
-be used when the update strategies provided by Deployment are not
-suitable, or a custom mechanism is required, or no control over the update
-process is needed at all.
+无状态服务由相同、可替换的实例组成，这些实例通常将状态转移到外部的永久存储系统，并通过负载均衡器在它们之间分配传入请求。本章将具体介绍 Kubernetes 中哪些抽象帮助操作此类无状态应用程序。
 
-### Instances
-The primary purpose of a ReplicaSet is to ensure a specified number of
-identical Pod replicas running at any given time. The main sections of a
-ReplicaSet definition include the number of replicas indicating how many
-Pods it should maintain, a selector that specifies how to identify the Pods it
-manages, and a Pod template for creating new Pod replicas.
+## 解决方案
+用于管理无状态 Pod 的控制器是 **ReplicaSet**，但它是由 **Deployment** 管理的较低级别的内部控制结构。Deployment 是推荐的用户操作无状态应用的抽象，负责创建和管理后台的 ReplicaSet。当 Deployment 提供的更新策略不适用，或者需要自定义机制时，可以直接使用 ReplicaSet。Deployment 允许控制副本的升级和回滚，而 ReplicaSet 负责维持指定数量的 Pod 副本。
 
-Regardless of whether you create a ReplicaSet directly or through a
-Deployment, the end result will be that the desired number of identical Pod
-replicas are created and maintained. The added benefit of using Deployment
-is that we can control how the replicas are upgraded and rolled back.
+### 实例管理
+ReplicaSet 的主要目的是确保指定数量的相同 Pod 副本始终在运行。ReplicaSet 的定义包括三个重要部分：
+1. **副本数**：指定 ReplicaSet 应维护的 Pod 数量。
+2. **选择器**：指定如何识别其管理的 Pod。
+3. **Pod 模板**：用于创建新 Pod 副本。
 
- The ReplicaSet’s job is to restart the
-containers if needed and scale out or in when the number of replicas is
-increased or decreased, respectively. With this behavior, Deployment and
-ReplicaSet can automate the lifecycle management of stateless applications.
+无论是通过 ReplicaSet 还是 Deployment 创建，最终都会保证有指定数量的相同 Pod 副本在运行。使用 Deployment 的额外好处是可以控制副本的升级和回滚。ReplicaSet 会自动处理 Pod 的重启以及随着副本数量的增加或减少进行的横向扩展或缩减。
 
-### Networking
-the ReplicaSet will
-create a new Pod that will have a new name, hostname, and IP address. If
-the application is stateless, as we’ve defined earlier in the chapter, new
-requests should be handled from the newly created Pod the same way as by
-any other Pod.
-more
-often, stateless services are contacted by other services over synchronous
-request/response-driven protocols such as HTTP and gRPC. Since the Pod
-IP address changes with every Pod restart, it is better to use a permanent IP
-address based on a Kubernetes Service that service consumers can use. A
-Kubernetes Service has a fixed IP address that doesn’t change during the
-lifetime of the Service, and it ensures the client requests are always load-
-balanced across instances and routed to the healthy and ready-to-accept-
-requests Pods.
+**示例：**
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers:
+      - name: my-container
+        image: my-image
+```
+在这个例子中，`my-deployment` 部署了 3 个 `my-app` 的副本，这些副本通过 `app: my-app` 标签选择器识别。
 
-Once a Service is created, it is assigned a clusterIP that is accessible only
-from within the Kubernetes cluster, and that IP remains unchanged as long
-as the Service definition exists. This acts as a permanent entrypoint to all
-matching Pods that are ephemeral and have changing IP addresses.
+### 网络管理
+ReplicaSet 会创建新的 Pod，这些 Pod 会有新的名称、主机名和 IP 地址。对于无状态的应用程序，每个 Pod 可以独立处理新请求。然而，由于 Pod 的 IP 地址在每次 Pod 重启时都会改变，建议使用基于 Kubernetes `Service` 的永久 IP 地址。`Service` 提供固定的 Cluster IP，确保客户端请求始终负载均衡到健康且准备好接受请求的 Pod 上。
 
-Notice that Deployment and the resulting ReplicaSet are only responsible
-for maintaining the desired number of stateless Pods that match the label
-selector. They are unaware of any Kubernetes Service that might be
-directing traffic to the same set of Pods or a different combination of Pods.
+**示例：**
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+spec:
+  selector:
+    app: my-app
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8080
+  clusterIP: 10.0.0.1
+```
+在这个例子中，`my-service` 将请求路由到 `app: my-app` 标签匹配的所有 Pod 上。即使 Pod 的 IP 地址发生变化，`Service` 提供的固定 `clusterIP`（如 10.0.0.1）仍然是应用的入口。
 
-### Storage
-Most stateless services require
-state, but they are stateless because they offload the state to some other
-stateful system or data store, such as a filesystem.
+### 存储管理
+虽然无状态服务不保存内部状态，但它们通常需要外部存储来保存数据。Kubernetes 提供了 `PersistentVolume`（PV）和 `PersistentVolumeClaim`（PVC）来支持持久化存储。Pod 通过 PVC 请求并绑定到 PV，这种间接连接使 Pod 的生命周期与存储的生命周期分离。
 
-In this section, we’ll look at the persistentVolumeClaim volume
-type, which allows you to use manually or dynamically provisioned
-persistent storage.
+**PersistentVolumeClaim 示例：**
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: my-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+```
+这个 PVC 请求 1GiB 的存储空间，并以 `ReadWriteOnce` 模式访问。它可以在 Pod 模板中引用：
 
-A PersistentVolume (PV) represents a storage resource abstraction in a
-Kubernetes cluster that has a lifecycle independent of any Pod lifecycle that
-is using it. A Pod cannot directly refer to a PV; however, a Pod uses
-PersistentVolumeClaim (PVC) to request and bind to the PV, which points
-to the actual durable storage. This indirect connection allows for a
-separation of concerns and Pod lifecycle decoupling from PV. A cluster
-administrator can configure storage provisioning and define PVs. The
-developer creating Pod definitions can use PVC to use the storage. With this
-indirection, even if the Pod is deleted, the ownership of the PV remains
-attached to the PVC and continues to exist.
+```yaml
+volumes:
+  - name: my-storage
+    persistentVolumeClaim:
+      claimName: my-pvc
+```
 
-Once a PVC is defined, it can be referenced from a Pod template through
-the persistentVolumeClaim field. One of the interesting fields of
-PersistentVolumeClaim is accessModes. It controls how the storage is
-mounted to the nodes and consumed by the Pods.
+**不同的访问模式：**
+- **ReadWriteOnce**：只能由一个节点挂载，但该节点上的多个 Pod 可以读写。
+- **ReadOnlyMany**：可以被多个节点挂载，但只允许读操作。
+- **ReadWriteMany**：可以被多个节点挂载，并允许读写操作。
+- **ReadWriteOncePod**：仅允许一个 Pod 读写，保证数据一致性。
 
-different
-accessModes offered by Kubernetes:
-ReadWriteOnce
-This represents a volume that can be mounted to a single node at a time.
-In this mode, one or multiple Pods running on the node could carry out
-read and write operations.
+## 总结
+无状态服务由相同、可替换的短暂实例组成，适合处理短生命周期的请求，并能够快速横向扩展或缩减。ReplicaSet 负责确保 Pod 的数量和状态，Deployment 则提供升级和回滚的控制。Service 作为入口，提供负载均衡和固定 IP 地址。对于需要持久化数据的无状态应用，PVC 提供了存储分离的机制。
 
-ReadOnlyMany
-The volume can be mounted to multiple nodes, but it allows read-only
-operations to all Pods.
-
-ReadWriteMany
-In this mode, the volume can be mounted by many nodes and allows
-both read and write operations.
-
-ReadWriteOncePod
-Notice that all of the access modes described so far offer per-node
-granularity. Even ReadWriteOnce allows multiple Pods on the same
-node to read from and write to the same volume simultaneously. Only
-ReadWriteOncePod access mode guarantees that only a single Pod has
-access to a volume.This is invaluable in scenarios where at most one
-writer application is allowed to access data for data-consistency
-guarantees. Use this mode with caution as it will turn your services into
-a singleton and prevent scaling out.
-
-In a ReplicaSet, all Pods are identical; they share the same PVC and refer to
-the same PV. This is in contrast to StatefulSets covered in the next chapter,
-where PVCs are created dynamically for each stateful Pod replica. This is
-one of the major differences between how stateless and stateful workloads
-are handled in Kubernetes.
-
-## Discussion
-Stateless services are composed
-of identical, swappable, ephemeral, and replaceable instances. They are
-ideal for handling short-lived requests and can scale up and down rapidly
-without having any dependencies among the instances. 
-
-At the lowest level, the Pod abstraction ensures that one or more containers
-are observed with liveness checks and are always up and running. Building
-on that, the ReplicaSet also ensures that the desired number of stateless
-Pods are always running on the healthy nodes. Deployments automate the
-upgrade and rollback mechanism of Pod replicas. When there is incoming
-traffic, the Service abstraction discovers and distributes traffic to healthy
-Pod instances with passing readiness probes. When a persistent file storage
-is required, PVCs can request and mount storage.
-
-You have to understand how liveness
-checks and ReplicaSet control Pods’ lifecycles, and how they relate to
-readiness probes and Service definitions controlling how the traffic is
-directed to the Pods. You should also understand how PVCs and
-accessMode control where the storage is mounted and how it is accessed.
-
-
-
-
-
-
-
-
+开发者在使用 Kubernetes 构建无状态应用时，应该理解这些组件的协同工作方式，确保应用的可扩展性和高可用性。

@@ -1,272 +1,109 @@
-# Chapter 12. “Stateful Service”
+# 第12章：有状态服务
 
->is all about how to create and manage
-distributed stateful applications with Kubernetes.
+## 引言
+本章介绍如何在 Kubernetes 中创建和管理分布式有状态应用程序。有状态应用程序的管理需要持久的身份、网络、存储和实例顺序等特性。StatefulSet 是 Kubernetes 为解决这些问题而设计的原语，提供了管理有状态应用的强大保证。
 
->Distributed stateful applications require features such as persistent identity,
-networking, storage, and ordinality. The Stateful Service pattern describes
-the StatefulSet primitive that provides these building blocks with strong
-guarantees ideal for the management of stateful applications.
+### 问题定义
+Kubernetes 提供了强大的无状态应用管理功能，比如副本自动管理、弹性扩展等。然而，对于需要持久状态的应用，每个实例都是独一无二的，具有长期存在的特性。典型的场景是数据库、消息队列等，背后往往是有状态服务。
 
-## Problem
-It is a significant boost to have a platform taking care of the placement,
-resiliency, and scaling of stateless applications, but there is still a large part
-of the workload to consider: stateful applications in which every instance is
-unique and has long-lived characteristics.
+在无状态服务中，ReplicaSet 并不保证“最多一个”副本语义，实例数量可能会暂时波动。而对于有状态服务，这种波动可能导致数据丢失。例如，两个副本同时启动，可能会导致数据冲突。因此，分布式有状态应用对管理的要求更高，需要更严格的保证。
 
-In the real world, behind every highly scalable stateless service is a stateful
-service, typically in the shape of a data store. While that is mostly true for a single-instance stateful application, it is not
-entirely true, as a ReplicaSet does not guarantee At-Most-One semantics,
-and the number of replicas can vary temporarily. Such a situation can be
-disastrous and lead to data loss for distributed stateful applications.
+### 存储
+有状态应用的存储需求通常是每个实例需要独立的、持久化的存储。简单的 ReplicaSet 和 PersistentVolumeClaim（PVC）组合无法实现这一需求，因为多个 Pod 会共享相同的存储。这种共享存储的方式容易导致数据冲突，特别是在扩展或缩减时，Pod 数量的变化可能导致数据丢失或损坏。
 
-### Storage
-How do we define the
-storage requirements in such a case? Typically, a distributed stateful
-application such as those mentioned previously would require dedicated,
-persistent storage for every instance. ReplicaSet with replicas=3 and a
-PVC definition would result in all three Pods attached to the same PV.A workaround is for the application instances to share storage and have an
-in-app mechanism to split the storage into subfolders and use it without
-conflicts. While doable, this approach creates a single point of failure with
-the single storage. Also, it is error-prone as the number of Pods changes
-during scaling, and it may cause severe challenges around preventing data
-corruption or loss during scaling。
+一种解决方案是为每个有状态应用实例创建单独的 ReplicaSet 和 PVC，但这种方式操作复杂，扩展时需要手动创建新的 ReplicaSet 和 PVC，而且缺乏统一管理的抽象。这是 Kubernetes 提供 StatefulSet 模式的原因。
 
-Another workaround is to have a separate ReplicaSet (with replicas=1)
-for every instance of the distributed stateful application. In this scenario,
-every ReplicaSet would get its PVC and dedicated storage. The downside
-of this approach is that it is intensive in manual labor: scaling up requires
-creating a new set of ReplicaSet, PVC, or Service definitions. This
-approach lacks a single abstraction for managing all instances of the stateful
-application as one.
+### 网络
+与存储类似，有状态应用要求稳定的网络身份。每个实例不仅要能够连接到存储，还需要能够通过稳定的网络地址与其他实例通信。在 ReplicaSet 中，Pod 的 IP 地址会在每次重启后发生变化，这对于需要稳定网络连接的有状态应用来说是不可接受的。
 
-### Networking
-Similar to the storage requirements, a distributed stateful application
-requires a stable network identity. In addition to storing application-specific
-data into the storage space, stateful applications also store configuration
-details such as hostname and connection details of their peers. That means
-every instance should be reachable in a predictable address that should not
-change dynamically, as is the case with Pod IP addresses in a ReplicaSet.
-Here we could address this requirement again through a workaround: create
-a Service per ReplicaSet and have replicas=1. However, managing such a
-setup is manual work, and the application itself cannot rely on a stable
-hostname because it changes after every restart and is also not aware of the
-Service name it is accessed from
+一种解决办法是为每个 ReplicaSet 创建一个独立的 Service，但这种方式也是手动管理，且在重启后，Pod 的主机名也会改变。因此，需要一种机制，确保每个实例的网络身份在其生命周期内保持不变。
 
-### Identity
-As you can see from the preceding requirements, clustered stateful
-applications depend heavily on every instance having a hold of its long-
-lived storage and network identity. That is because in a stateful application,
-every instance is unique and knows its own identity, and the main
-ingredients of that identity are the long-lived storage and the networking
-coordinates. To this list, we could also add the identity/name of the instance
-(some stateful applications require unique persistent names), which in
-Kubernetes would be the Pod name. A Pod created with ReplicaSet would
-have a random name and would not preserve that identity across a restart.
+### 身份
+有状态应用的一个核心需求是每个实例都有一个持久的身份。这不仅包括存储和网络身份，还包括 Pod 的名称。ReplicaSet 创建的 Pod 名称是随机的，重启后会改变，而有状态应用需要在重启后保留其身份。这就要求 Kubernetes 提供一种能够为每个实例分配唯一且持久身份的机制。
 
-### Ordinality
-In addition to a unique and long-lived identity, the instances of clustered
-stateful applications have a fixed position in the collection of instances.
-This ordering typically impacts the sequence in which the instances are
-scaled up and down. However, it can also be used for data distribution or
-access and in-cluster behavior positioning such as locks, singletons, or
-leaders.
+### 顺序性
+有状态应用的实例不仅需要唯一身份，还往往具有顺序性。这个顺序决定了实例启动和关闭的顺序，并且在某些应用中，实例的顺序还影响数据分布、锁机制、领导者选举等行为。例如，在数据库集群中，某个实例可能需要先启动以作为集群的领导者，其他实例才能依次加入。
 
-### Other Requirements
-Stable and long-lived storage, networking, identity, and ordinality are
-among the collective needs of clustered stateful applications. Managing
-stateful applications also carries many other specific requirements that vary
-case by case. For example, some applications have the notion of a quorum
-and require a minimum number of instances to always be available; some
-are sensitive to ordinality, and some are fine with parallel Deployments; and
-some tolerate duplicate instances, and some don’t. Planning for all these
-one-off cases and providing generic mechanisms is an impossible task, and
-that’s why Kubernetes also allows you to create CustomResourceDefinitions (CRDs) and Operators for managing
-applications with bespoke requirements.
+### 其他需求
+除了存储、网络、身份和顺序性之外，不同的有状态应用还有各自的特殊需求。例如，有些应用需要保持最少的副本数量（quorum），有些应用对顺序非常敏感，而有些应用能够容忍实例的重复。为满足这些复杂的需求，Kubernetes 提供了自定义资源定义（CRD）和 Operator，以便用户根据特定需求管理这些应用。
 
-## Solution
-In many
-ways, StatefulSet is for managing pets, and ReplicaSet is for managing
-cattle. Pets versus cattle is a famous (but also a controversial) analogy in the
-DevOps world: identical and replaceable servers are referred to as cattle,
-and nonfungible unique servers that require individual care are referred to
-as pets. 
-Similarly, StatefulSet (initially inspired by the analogy and named
-PetSet) is designed for managing nonfungible Pods, as opposed to
-ReplicaSet, which is for managing identical replaceable Pods.
+## 解决方案
+Kubernetes 提供了 StatefulSet 来管理这些“宠物”级别的 Pod。与 ReplicaSet 不同，StatefulSet 是为管理有状态的、不可替代的 Pod 设计的。StatefulSet 最初被称为 PetSet，借用了 DevOps 中的 “宠物和牛” 的比喻：ReplicaSet 负责管理可替换的“牛”，而 StatefulSet 负责管理需要个性化照顾的“宠物”。
 
-example： our random-generator service as a
-StatefulSet
+### 存储
+StatefulSet 中的每个 Pod 都需要独立的存储。与 ReplicaSet 需要提前定义 PVC 不同，StatefulSet 使用 `volumeClaimTemplates` 动态为每个 Pod 创建 PVC。在 StatefulSet 中，Pod 的存储是独立且持久的，即使 Pod 被删除，PVC 也不会自动删除，以防止数据丢失。
 
-### Storage
-The
-way to request and associate persistent storage with a Pod in Kubernetes is
-through PVs and PVCs. To create PVCs the same way it creates Pods,
-StatefulSet uses a volumeClaimTemplates element. This extra property is
-one of the main differences between a StatefulSet and a ReplicaSet, which
-has a persistentVolumeClaim element.
+**示例：**
 
-Rather than referring to a predefined PVC, StatefulSets create PVCs by
-using volumeClaimTemplates on the fly during Pod creation. This
-mechanism allows every Pod to get its own dedicated PVC during initial
-creation as well as during scaling up by changing the replicas count of the
-StatefulSets.
+```yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: web
+spec:
+  serviceName: "nginx"
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.7.9
+        ports:
+        - containerPort: 80
+          name: web
+  volumeClaimTemplates:
+  - metadata:
+      name: www
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+```
 
-As you probably realize, we said PVCs are created and associated with the
-Pods, but we didn’t say anything about PVs. That is because StatefulSets do
-not manage PVs in any way. The storage for the Pods must be provisioned
-in advance by an admin or provisioned on demand by a PV provisioner
-based on the requested storage class and ready for consumption by the
-stateful Pods.
+在这个示例中，StatefulSet `web` 创建了 3 个副本，每个 Pod 拥有独立的存储 `www`，并通过 `volumeClaimTemplates` 动态生成 PVC。
 
-Note the asymmetric behavior here: scaling up a StatefulSet (increasing the
-replicas count) creates new Pods and associated PVCs. Scaling down
-deletes the Pods, but it does not delete any PVCs (or PVs), which means the
-PVs cannot be recycled or deleted, and Kubernetes cannot free the storage.
-This behavior is by design and driven by the presumption that the storage of
-stateful applications is critical and that an accidental scale-down should not
-cause data loss.
+### 网络
+StatefulSet 中的每个 Pod 都有稳定的网络身份。为了实现这一点，StatefulSet 需要一个**无头服务**（headless service）。无头服务不会分配 Cluster IP，而是直接创建到 Pod 的 DNS 映射。通过这种方式，集群内的其他应用可以通过固定的 DNS 名称访问指定的 Pod。
 
-### Networking
-Each Pod created by a StatefulSet has a stable identity generated by the
-StatefulSet’s name and an ordinal index (starting from 0).
+**示例：**
 
-we define a headless Service. In a headless Service,
-clusterIP is set to None, which means we don’t want a kube-proxy to
-handle the Service, and we don’t want a cluster IP allocation or load
-balancing. Then why do we need a Service?
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+spec:
+  clusterIP: None
+  selector:
+    app: nginx
+  ports:
+  - port: 80
+    targetPort: 80
+```
 
-Stateless Pods created through a ReplicaSet are assumed to be identical, and
-it doesn’t matter on which one a request lands (hence the load balancing
-with a regular Service). But stateful Pods differ from one another, and we
-may need to reach a specific Pod by its coordinates.
+在这个无头服务中，`clusterIP` 被设置为 `None`，使每个 Pod 拥有唯一的 DNS 名称。例如，第一个 Pod 可以通过 `nginx-0.nginx.default.svc.cluster.local` 访问。
 
-A headless Service with selectors (notice .selector.app == random-
-generator) enables exactly this. Such a Service creates endpoint records in
-the API Server and creates DNS entries to return A records (addresses) that
-point directly to the Pods backing the Service. Long story short, each Pod
-gets a DNS entry where clients can directly reach out to it in a predictable
-way. For example, if our random-generator Service belongs to the
-default namespace, we can reach our rg-0 Pod through its fully qualified
-domain name: rg-0.random-generator.default.svc.cluster.local,
-where the Pod’s name is prepended to the Service name. This mapping
-allows other members of the clustered application or other clients to reach
-specific Pods if they wish to.
+### 身份
+StatefulSet 的核心功能之一是为每个 Pod 分配唯一的且持久的身份。每个 Pod 的名称是基于 StatefulSet 名称和序号生成的，例如 `nginx-0`、`nginx-1` 等。这个固定的名称使得每个 Pod 的身份在整个生命周期内保持不变，甚至在 Pod 重启时也不会改变。
 
-We can also perform DNS lookup for Service (SRV) records (e.g., through
-dig SRV random-generator.default.svc.cluster.local) and
-discover all running Pods registered with the StatefulSet’s governing
-Service. This mechanism allows dynamic cluster member discovery if any
-client application needs to do so. The association between the headless
-Service and the StatefulSet is not only based on the selectors, but the
-StatefulSet should also link back to the Service by its name as
-serviceName。
+### 顺序性
+StatefulSet 中 Pod 的启动和关闭是有顺序的。Pod 的名称带有序号，如 `nginx-0`，表示这是第一个实例。Pod 启动顺序是从 0 开始，逐个启动；关闭时，按相反顺序依次关闭。这种顺序性确保了数据一致性，特别是在需要同步数据的有状态集群中，例如分布式数据库。
 
-Having dedicated storage defined through volumeClaimTemplates is not
-mandatory, but linking to a Service through serviceName field is. The
-governing Service must exist before the StatefulSet is created and is
-responsible for the network identity of the set. You can always create other
-types of Services that also load balance across your stateful Pods if that is
-what you want.
+### 其他特性
+StatefulSet 还提供了一些定制功能，适用于不同的有状态应用：
 
-### Identity
-Identity is the meta building block all other StatefulSet guarantees are built
-upon. A predictable Pod name and identity is generated based on
-StatefulSet’s name. 
-We then use that identity to name PVCs, reach out to
-specific Pods through headless Services, and more. You can predict the
-identity of every Pod before creating it and use that knowledge in the
-application itself if needed.
+- **分区更新（Partitioned updates）**：StatefulSet 支持部分更新。例如，可以只更新具有更高序号的 Pod，确保较低序号的 Pod 仍保持原有版本，这对保持集群的 quorum（法定数量）很有用。
+  
+- **并行部署（Parallel deployments）**：默认情况下，StatefulSet 按顺序启动和关闭 Pod。如果不需要顺序性，可以使用 `Parallel` 策略，使 Pod 并行启动和关闭，加快操作速度。
 
-### Ordinality
-In addition to their uniqueness,
-instances may also be related to one another based on their instantiation
-order/position, and this is where the ordinality requirement comes in.
+- **At-Most-One 保证**：StatefulSet 保证每个 Pod 都是唯一的，并且不会同时存在两个相同身份的 Pod。这与 ReplicaSet 的至少保证（At-Least-X-Guarantee）不同。
 
-From a StatefulSet point of view, the only place where ordinality comes
-into play is during scaling. Pods have names that have an ordinal suffix
-(starting from 0), and that Pod creation order also defines the order in which
-Pods are scaled up and down (in reverse order, from n – 1 to 0).
-
-To allow proper data synchronization during scale-up and -down,
-StatefulSet by default performs sequential startup and shutdown. That
-means Pods start from the first one (with index 0), and only when that Pod
-has successfully started is the next one scheduled (with index 1), and the
-sequence continues. During scaling down, the order reverses—first shutting
-down the Pod with the highest index, and only when it has shut down
-successfully is the Pod with the next lower index stopped. This sequence
-continues until the Pod with index 0 is terminated.
-
-### Other Features
-StatefulSets have other aspects that are customizable to suit the needs of
-stateful applications. Each stateful application is unique and requires careful
-consideration while trying to fit it into the StatefulSet model. Let’s see a
-few more Kubernetes features that may turn out to be useful while taming
-stateful applications：
-
-#### Partitioned updates
-StatefulSets allow
-phased rollout (such as a canary release), which guarantees a certain
-number of instances to remain intact while applying updates to the rest
-of the instances.By using the default rolling update strategy, you can partition instances
-by specifying a .spec.updateStrategy.rollingUpdate.partition
-number. The parameter (with a default value of 0) indicates the ordinal
-at which the StatefulSet should be partitioned for updates.If the
-parameter is specified, all Pods with an ordinal index greater than or
-equal to the partition are updated, while all Pods with an ordinal less
-than that are not updated. That is true even if the Pods are deleted;
-Kubernetes recreates them at the previous version. This feature can
-enable partial updates to clustered stateful applications (ensuring the
-quorum is preserved, for example) and then roll out the changes to the
-rest of the cluster by setting the partition back to 0.
-
-#### Parallel deployments
-When we set .spec.podManagementPolicy to Parallel, the
-StatefulSet launches or terminates all Pods in parallel and does not wait
-for Pods to run and become ready or completely terminated before
-moving to the next one. If sequential processing is not a requirement for
-your stateful application, this option can speed up operational
-procedures。
-
-#### At-Most-One Guarantee
-Uniqueness is among the fundamental attributes of stateful application
-instances, and Kubernetes guarantees that uniqueness by making sure
-no two Pods of a StatefulSet have the same identity or are bound to the
-same PV. In contrast, ReplicaSet offers the At-Least-X-Guarantee for its
-instances. For example, a ReplicaSet with two replicas tries to keep at
-least two instances up and running at all times. 
-
-A StatefulSet controller, on the other hand, makes every possible check
-to ensure there are no duplicate Pods—hence the At-Most-One
-Guarantee. It does not start a Pod again unless the old instance is
-confirmed to be shut down completely.
-
-## Discussion
-We
-discovered that handling a single-instance stateful application is relatively
-easy, but handling distributed state is a multidimensional challenge. While
-we typically associate the notion of “state” with “storage,” here we have
-seen multiple facets of state and how it requires different guarantees from
-different stateful applications. In this space, StatefulSets is an excellent
-primitive for implementing distributed stateful applications generically. It
-addresses the need for persistent storage, networking (through Services),
-identity, ordinality, and a few other aspects. It provides a good set of
-building blocks for managing stateful applications in an automated fashion,
-making them first-class citizens in the cloud native world.
-StatefulSets are a good start and a step forward, but the world of stateful
-applications is unique and complex. In addition to the stateful applications
-designed for a cloud native world that can fit into a StatefulSet, a ton of
-legacy stateful applications exist that have not been designed for cloud
-native platforms and have even more needs. Luckily Kubernetes has an
-answer for that too. The Kubernetes community has realized that rather than
-modeling different workloads through Kubernetes resources and
-implementing their behavior through generic controllers, it should allow
-users to implement their custom controllers and even go one step further
-and allow modeling application resources through custom resource
-definitions and behavior through operators.
-
-
-
-
-
-
+## 讨论
+虽然 StatefulSet 是管理有状态应用的强大工具，但它并不适合所有情况。StatefulSet 解决了存储、网络、身份和顺序性问题，为分布式有状态应用提供了良好的支持。但有些遗留应用可能需要更复杂的功能，这时可以考虑使用自定义资源（CRD）和 Operator 来扩展 Kubernetes 的能力。
