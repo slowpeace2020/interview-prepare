@@ -140,6 +140,88 @@ many relationship between subjects and Roles. This means that a single
 subject can have multiple Roles, and a single Role can be applied to
 multiple subjects.
 
+Now that we have looked into the what (Roles) and who (subjects) of the
+Kubernetes RBAC model, let’s have a closer look at how we can combine
+both concepts with RoleBindings。
+
+Each RoleBinding can connect a list of subjects to a Role. The subjects
+list field takes resource references as elements. Those resource references
+have a name field plus kind and apiGroup fields for defining the resource
+type to reference.One unique aspect of ServiceAccounts is that it is the
+only subject type that can also carry a namespace field. This allows you
+to grant access to Pods from other namespaces.
+
+The other end of a RoleBinding points to a single Role. This Role can either
+be a Role resource within the same namespace as the RoleBinding or a
+ClusterRole resource shared across multiple bindings in the cluster.
+
+#### ClusterRole
+ClusterRoles in Kubernetes are similar to regular Roles but are applied
+cluster-wide rather than to a specific namespace. They have two primary
+uses：Securing cluster-wide resources such as CustomResourceDefinitions or
+StorageClasses. These resources are typically managed at the cluster-
+admin level and require additional access control.Defining typical Roles that are shared across namespaces. 
+
+RoleBindings can refer only to Roles defined in the
+same namespace. ClusterRoles allow you to define general-access
+control Roles (e.g., “view” for read-only access to all resources) that
+can be used in multiple RoleBindings.
+
+Sometimes you may need to combine the permissions defined in two
+ClusterRoles. One way to do this is to create multiple RoleBindings that
+refer to both ClusterRoles. However, there is a more elegant way to achieve
+this using aggregation.
+To use aggregation, you can define a ClusterRole with an empty rules field
+and a populated aggregationRule field containing a list of label selectors.
 
 
+#### ClusterRoleBinding
+ClusterRoleBindings should be used only for administrative tasks, such as
+managing cluster-wide resources like Nodes, Namespaces,
+CustomResourceDefinitions, or even ClusterRoleBindings.These final warnings conclude our tour through the world of Kubernetes
+RBAC. This machinery is mighty, but it’s also complex to understand and
+sometimes even more complicated to debug. The following sidebar gives
+you some tips for better understanding a given RBAC setup.
+the Access Review API can help by allowing you to query the
+authorization subsystem for permissions。One way to use this API is through the kubectl auth can-i
+command.While kubectl auth can-i helps check specific permissions, it can be
+tedious and does not provide a comprehensive overview of a subject’s
+permissions across the cluster. To better understand what actions a
+subject can perform on all resources, tools like rakkess can be helpful.Another tool to help visualize and verify the application of fine-grained
+permissions is KubiScan, which allows you to scan a Kubernetes cluster
+for risky permissions in the RBAC configuration.
+
+## Discussion
+Kubernetes RBAC is a powerful tool for controlling access to API
+resources. However, it can be challenging to understand which definition
+objects to use and how to combine them to fit a particular security setup.
+Here are some guidelines to help you navigate these decisions:
+
+If you want to secure resources in a specific namespace, use a Role
+with a RoleBinding that connects to a user or ServiceAccount.
+
+If you want to reuse the same access rules in multiple namespaces, use
+a RoleBinding with a ClusterRole that defines these shared-access
+rules.
+
+If you want to extend one or more existing predefined ClusterRoles,
+create a new ClusterRole with an aggregationRule field that refers to
+the ClusterRoles you wish to extend, and add your permissions to the
+rules field.
+
+If you want to grant a user or ServiceAccount access to all resources of
+a specific kind in all namespaces, use a ClusterRole and a
+ClusterRoleBinding.
+If you want to manage access to a cluster-wide resource like a
+CustomResourceDefinition, use a ClusterRole and a
+ClusterRoleBinding。
+
+We have seen how RBAC allows us to define fine-grained permissions and
+manage them. It can reduce risk by ensuring the applied permission does
+not leave gaps for the escalation path. On the other hand, defining any broad
+open permissions can lead to security escalations.
+
+Avoid wildcard permissions
+Avoid cluster-admin ClusterRole
+Don’t automount ServiceAccount tokens
 
